@@ -77,7 +77,7 @@
         let player = { x: 5.5, y: 5.5, angle: 0, health: 100, maxHealth: 100, ammo: 300, maxAmmo: 300, recoil: 0, accuracy: 1, velocity: { x: 0, y: 0 }, screenShake: 0, isSprinting: false, isCrouching: false, currentWeapon: 0, kills: 0, killstreak: 0, weapons: [{ name: 'Rifle', damage: 30, rof: 600, accuracy: 0.85, ammo: 300, spread: 0.08, icon: '🔫' }, { name: 'Shotgun', damage: 80, rof: 100, accuracy: 0.6, ammo: 50, spread: 0.25, icon: '🔱' }, { name: 'Sniper', damage: 100, rof: 60, accuracy: 0.98, ammo: 20, spread: 0.01, icon: '🎯' }] };
         let gameActive = true, score = 0, enemies = [], lastShot = 0, mouseX = 500, waveNumber = 1, waveActive = false, waveEnemiesSpawned = 0, waveEnemiesDefeated = 0, powerUps = [], particles = [];
 
-        const levelMap = [[1,1,1,1,1,1,1,1,1,1], [1,0,0,0,1,0,0,0,0,1], [1,0,0,0,1,0,1,0,0,1], [1,0,0,0,0,0,1,1,0,1], [1,0,1,1,0,0,0,1,0,1], [1,0,1,0,0,1,0,0,0,1], [1,0,0,0,1,1,0,0,1,1], [1,0,0,0,1,0,0,1,0,1], [1,0,0,0,0,0,0,0,0,1], [1,1,1,1,1,1,1,1,1,1]];
+        const levelMap = [[1,1,1,1,1,1,1,1,1,1], [1,0,0,1,0,0,1,0,0,1], [1,0,0,1,0,0,1,0,0,1], [1,1,0,1,1,0,1,1,0,1], [1,0,0,0,0,0,0,0,0,1], [1,0,0,1,0,0,1,0,0,1], [1,0,0,1,0,0,1,0,0,1], [1,1,0,1,1,0,1,1,0,1], [1,0,0,0,0,0,0,0,0,1], [1,1,1,1,1,1,1,1,1,1]];
 
         const keys = {};
         document.addEventListener('keydown', e => {
