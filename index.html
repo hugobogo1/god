@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FPS Shooter</title>
+    <title>Paintball FPS - Wave Shooter</title>
     <style>
         * {
             margin: 0;
@@ -272,8 +272,51 @@
     </div>
 
     <script>
+        // Startup validation and error handling
+        window.addEventListener('load', () => {
+            console.log('=== Paintball FPS - Wave Shooter ===');
+            console.log('Game loaded successfully');
+            
+            // Check all required elements
+            const requiredElements = [
+                'gameCanvas', 'score', 'health', 'ammo', 'wave', 'kills', 'weapon',
+                'minimap', 'hitMarker', 'crosshair', 'instructions', 'gameOver', 'finalScore'
+            ];
+            
+            let allPresent = true;
+            requiredElements.forEach(id => {
+                const element = document.getElementById(id);
+                if (!element) {
+                    console.error(`Missing element: ${id}`);
+                    allPresent = false;
+                } else {
+                    console.log(`✓ ${id}`);
+                }
+            });
+            
+            if (allPresent) {
+                console.log('✓ All elements present - starting game');
+            } else {
+                console.error('✗ Some elements are missing!');
+            }
+        });
+
+        // Handle errors globally
+        window.addEventListener('error', (event) => {
+            console.error('Global error:', event.error);
+        });
+
+        // Initialize game components
         const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
+        if (!canvas) {
+            console.error('Canvas not found!');
+        }
+        
+        const ctx = canvas ? canvas.getContext('2d') : null;
+        if (!ctx) {
+            console.error('Cannot get 2D context!');
+        }
+
         const scoreDisplay = document.getElementById('score');
         const healthDisplay = document.getElementById('health');
         const gameOverScreen = document.getElementById('gameOver');
@@ -404,6 +447,7 @@
             player.velocity.x *= 0.85;
             player.velocity.y *= 0.85;
 
+            let currentSpeed = player.isCrouching ? player.crouchSpeed : (player.isSprinting ? player.sprintSpeed : player.speed);
             let accelX = 0;
             let accelY = 0;
 
@@ -439,9 +483,14 @@
                 player.velocity.y = 0;
             }
 
-            // Reduce recoil
+            // Reduce recoil and accuracy
             player.recoil *= 0.92;
             player.accuracy *= 0.95;
+
+            // Sprint accuracy penalty
+            if (player.isSprinting) {
+                player.accuracy *= 0.7;
+            }
         }
 
         function castRay(angle) {
@@ -466,12 +515,11 @@
             ctx.fillStyle = '#1a1a2e';
             ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-            // Render floor with grid
+            // Render floor with enhanced grid
             ctx.fillStyle = '#0a0a0a';
             ctx.fillRect(0, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT / 2);
             
-            // Floor grid for depth perception
-            ctx.strokeStyle = 'rgba(50, 50, 50, 0.3)';
+            ctx.strokeStyle = 'rgba(50, 50, 50, 0.4)';
             ctx.lineWidth = 1;
             const gridSpacing = 50;
             for (let i = 0; i < GAME_WIDTH; i += gridSpacing) {
@@ -488,10 +536,8 @@
                 const rayAngle = player.angle - FOV / 2 + rayAngleStep * i;
                 const distance = castRay(rayAngle);
 
-                // Fix fish-eye by multiplying by cosine
                 const correctedDistance = distance * Math.cos(rayAngle - player.angle);
 
-                // Calculate wall height with better shading
                 const wallHeight = Math.min(WALL_HEIGHT / (correctedDistance + 0.1), GAME_HEIGHT);
                 const wallColor = Math.floor(150 - (distance / MAX_DEPTH) * 100);
                 const color = `rgb(${wallColor}, ${wallColor * 0.8}, ${wallColor * 0.7})`;
@@ -500,18 +546,49 @@
                 const wallTop = (GAME_HEIGHT - wallHeight) / 2;
                 ctx.fillRect(i, wallTop, 1, wallHeight);
 
-                // Add wall texture
                 if (i % 2 === 0) {
                     ctx.fillStyle = `rgba(0, 0, 0, ${0.1 + (distance / MAX_DEPTH) * 0.2})`;
                     ctx.fillRect(i, wallTop, 1, wallHeight);
                 }
 
-                // Ceiling
                 ctx.fillStyle = '#0f0f1a';
                 ctx.fillRect(i, 0, 1, wallTop);
             }
 
-            // Render enemies with better visuals
+            // Render particles
+            particles.forEach(p => {
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = Math.max(0, p.life / 30);
+                ctx.beginPath();
+                ctx.arc(GAME_WIDTH / 2 + (Math.random() - 0.5) * 200, GAME_HEIGHT / 2 + (Math.random() - 0.5) * 200, 2, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.globalAlpha = 1;
+
+            // Render power-ups
+            powerUps.forEach(pu => {
+                const dx = pu.x - player.x;
+                const dy = pu.y - player.y;
+                const puDist = Math.sqrt(dx * dx + dy * dy);
+                const puAngle = Math.atan2(dy, dx);
+                const angleDiff = normalizeAngle(puAngle - player.angle);
+
+                if (Math.abs(angleDiff) < FOV / 2) {
+                    const screenX = GAME_WIDTH / 2 + (angleDiff / (FOV / 2)) * (GAME_WIDTH / 2);
+                    const puHeight = Math.min(WALL_HEIGHT / (puDist + 0.1), GAME_HEIGHT);
+                    const puTop = (GAME_HEIGHT - puHeight) / 2;
+                    const puWidth = puHeight * 0.4;
+
+                    ctx.fillStyle = pu.type === 'health' ? '#FF0000' : '#00FF00';
+                    ctx.globalAlpha = 0.8;
+                    ctx.beginPath();
+                    ctx.arc(screenX, puTop + puHeight / 2, puWidth / 2, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.globalAlpha = 1;
+                }
+            });
+
+            // Render enemies with enhancements
             enemies.forEach(enemy => {
                 const dx = enemy.x - player.x;
                 const dy = enemy.y - player.y;
@@ -525,15 +602,12 @@
                     const enemyTop = (GAME_HEIGHT - enemyHeight) / 2;
                     const enemyWidth = enemyHeight * 0.6;
 
-                    // Enemy body glow
                     ctx.fillStyle = enemy.color + '40';
                     ctx.fillRect(screenX - enemyWidth / 2 - 10, enemyTop - 10, enemyWidth + 20, enemyHeight + 20);
 
-                    // Enemy body
                     ctx.fillStyle = enemy.color;
                     ctx.fillRect(screenX - enemyWidth / 2, enemyTop, enemyWidth, enemyHeight);
 
-                    // Paint splatters on enemy
                     enemy.paintHits.forEach(hit => {
                         ctx.fillStyle = hit.color;
                         ctx.globalAlpha = 0.9;
@@ -545,26 +619,22 @@
                         ctx.globalAlpha = 1;
                     });
 
-                    // Outline
                     ctx.strokeStyle = enemy.color;
                     ctx.lineWidth = 2;
                     ctx.strokeRect(screenX - enemyWidth / 2, enemyTop, enemyWidth, enemyHeight);
 
-                    // Health bar background
+                    // Health bar with wave scaling
                     ctx.fillStyle = '#440000';
                     ctx.fillRect(screenX - enemyWidth / 2, enemyTop - 20, enemyWidth, 8);
 
-                    // Health bar
-                    ctx.fillStyle = '#00FF00';
-                    if (enemy.health < 50) ctx.fillStyle = '#FFFF00';
-                    if (enemy.health < 25) ctx.fillStyle = '#FF0000';
-                    ctx.fillRect(screenX - enemyWidth / 2, enemyTop - 20, (enemyWidth * enemy.health) / 100, 8);
+                    const healthPercent = (enemy.health / enemy.maxHealth) * 100;
+                    ctx.fillStyle = healthPercent > 50 ? '#00FF00' : (healthPercent > 25 ? '#FFFF00' : '#FF0000');
+                    ctx.fillRect(screenX - enemyWidth / 2, enemyTop - 20, (enemyWidth * healthPercent) / 100, 8);
                     
                     ctx.strokeStyle = '#00AA00';
                     ctx.lineWidth = 1;
                     ctx.strokeRect(screenX - enemyWidth / 2, enemyTop - 20, enemyWidth, 8);
 
-                    // Weapon indicator
                     if (enemy.shootCooldown < 0) {
                         ctx.fillStyle = '#00FF00';
                         ctx.font = 'bold 12px monospace';
@@ -573,7 +643,7 @@
                 }
             });
 
-            // Draw gun recoil effect with better visuals
+            // Enhanced recoil effect
             if (player.recoil > 0) {
                 ctx.strokeStyle = `rgba(255, 200, 0, ${player.recoil * 0.5})`;
                 ctx.lineWidth = 4;
@@ -596,6 +666,19 @@
                 ctx.globalAlpha = 1;
                 player.screenShake *= 0.9;
             }
+
+            // Sprint indicator
+            if (player.isSprinting) {
+                ctx.strokeStyle = 'rgba(0, 255, 255, 0.5)';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(5, 5, GAME_WIDTH - 10, GAME_HEIGHT - 10);
+            }
+
+            // Crouch indicator
+            if (player.isCrouching) {
+                ctx.fillStyle = 'rgba(255, 255, 0, 0.3)';
+                ctx.fillRect(0, GAME_HEIGHT - 20, GAME_WIDTH, 20);
+            }
         }
 
         function castRayToPoint(angle, x, y) {
@@ -611,15 +694,18 @@
         }
 
         function spawnEnemy() {
-            if (!gameActive || enemies.length > 6) return;
+            if (!gameActive || enemies.length > (5 + waveNumber)) return;
 
             let x, y;
             let valid = false;
-            while (!valid) {
+            let attempts = 0;
+            while (!valid && attempts < 10) {
                 x = Math.random() * 8 + 1;
                 y = Math.random() * 8 + 1;
                 valid = !isWall(x, y) && Math.sqrt((x - player.x) ** 2 + (y - player.y) ** 2) > 3;
+                attempts++;
             }
+            if (!valid) return;
 
             const paintColors = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF'];
             const enemyColor = paintColors[Math.floor(Math.random() * paintColors.length)];
@@ -627,14 +713,90 @@
             enemies.push({
                 x: x,
                 y: y,
-                health: 100,
-                speed: 0.02,
+                health: 100 + (waveNumber * 20),
+                maxHealth: 100 + (waveNumber * 20),
+                speed: 0.02 + (waveNumber * 0.005),
                 shootTimer: 0,
-                shootCooldown: 0,
+                shootCooldown: 40,
                 color: enemyColor,
                 paintHits: [],
                 lastShot: 0
             });
+            waveEnemiesSpawned++;
+        }
+
+        function startWave() {
+            waveActive = true;
+            waveEnemiesSpawned = 0;
+            waveEnemiesDefeated = 0;
+            player.killstreak = 0;
+            const maxEnemies = 3 + (waveNumber * 2);
+            document.getElementById('wave').textContent = `🌊 Wave: ${waveNumber} | Enemies: 0/${maxEnemies}`;
+        }
+
+        function checkWaveComplete() {
+            if (waveActive && waveEnemiesDefeated >= (3 + (waveNumber * 2))) {
+                waveActive = false;
+                waveNumber++;
+                player.health = Math.min(player.maxHealth, player.health + 20);
+                player.ammo = player.weapons[player.currentWeapon].ammo;
+                healthDisplay.textContent = '❤ Health: ' + Math.floor(player.health);
+                updateAmmoDisplay();
+                score += 1000 * waveNumber;
+                scoreDisplay.textContent = 'Score: ' + score;
+            }
+        }
+
+        function updatePowerUps() {
+            for (let i = powerUps.length - 1; i >= 0; i--) {
+                const pu = powerUps[i];
+                pu.lifetime--;
+
+                const dist = Math.sqrt((player.x - pu.x) ** 2 + (player.y - pu.y) ** 2);
+                if (dist < 1 || pu.lifetime <= 0) {
+                    if (dist < 1) {
+                        if (pu.type === 'health') {
+                            player.health = Math.min(player.maxHealth, player.health + 30);
+                        } else if (pu.type === 'ammo') {
+                            player.ammo = player.weapons[player.currentWeapon].ammo;
+                        }
+                        healthDisplay.textContent = '❤ Health: ' + Math.floor(player.health);
+                        updateAmmoDisplay();
+                    }
+                    powerUps.splice(i, 1);
+                }
+            }
+        }
+
+        function updateParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.2; // gravity
+                p.life--;
+                
+                if (p.life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        function showDamageFlash(angle) {
+            const indicator = document.getElementById('damageIndicator');
+            const flash = document.createElement('div');
+            flash.className = 'damage-flash';
+            flash.style.borderColor = `rgba(255, 50, 50, 0.8)`;
+            indicator.appendChild(flash);
+            
+            setTimeout(() => {
+                flash.style.opacity = '0.7';
+                flash.style.transition = 'opacity 0.3s';
+            }, 10);
+            
+            setTimeout(() => {
+                flash.remove();
+            }, 300);
         }
 
         function updateEnemies() {
@@ -644,92 +806,123 @@
                 const dy = player.y - enemy.y;
                 const dist = Math.sqrt(dx * dx + dy * dy);
 
-                // Move toward player at paintball speed (slower, tactical)
+                // Move toward player at paintball speed with AI improvements
                 if (dist > 0.5) {
-                    enemy.x += (dx / dist) * enemy.speed * 0.7;
-                    enemy.y += (dy / dist) * enemy.speed * 0.7;
+                    // Try to flank player
+                    let targetX = player.x;
+                    let targetY = player.y;
+                    if (Math.random() > 0.7 && dist < 3) {
+                        const flankerAngle = Math.atan2(dy, dx) + (Math.random() > 0.5 ? Math.PI / 4 : -Math.PI / 4);
+                        targetX += Math.cos(flankerAngle) * 1.5;
+                        targetY += Math.sin(flankerAngle) * 1.5;
+                    }
+
+                    const targetDx = targetX - enemy.x;
+                    const targetDy = targetY - enemy.y;
+                    const targetDist = Math.sqrt(targetDx * targetDx + targetDy * targetDy);
+                    
+                    enemy.x += (targetDx / targetDist) * enemy.speed * 0.7;
+                    enemy.y += (targetDy / targetDist) * enemy.speed * 0.7;
                 }
 
-                // Enemy shoots back
+                // Enhanced enemy AI - better shooting
                 enemy.shootCooldown--;
-                if (dist < 5 && enemy.shootCooldown < 0) {
-                    enemy.shootCooldown = Math.random() * 40 + 20;
-                    player.health -= Math.random() * 5 + 2;
-                    player.screenShake = 0.2;
-                    healthDisplay.textContent = 'Health: ' + Math.max(0, Math.floor(player.health));
+                if (dist < 6 && enemy.shootCooldown < 0) {
+                    enemy.shootCooldown = 30 - Math.floor(waveNumber * 2);
+                    const damage = 3 + waveNumber;
+                    player.health -= damage;
+                    player.screenShake = 0.25;
+                    player.lastDamageAngle = Math.atan2(dy, dx);
+                    
+                    healthDisplay.textContent = '❤ Health: ' + Math.max(0, Math.floor(player.health));
+                    
+                    // Show damage direction
+                    showDamageFlash(player.lastDamageAngle);
+                    
                     if (player.health <= 0) gameOver();
                 }
 
-                // Check if enemy hit player
                 if (dist < 0.5) {
-                    player.health -= 1;
-                    healthDisplay.textContent = 'Health: ' + Math.max(0, Math.floor(player.health));
+                    player.health -= 2;
+                    healthDisplay.textContent = '❤ Health: ' + Math.max(0, Math.floor(player.health));
                     if (player.health <= 0) gameOver();
                 }
 
                 if (enemy.health <= 0) {
                     enemies.splice(i, 1);
-                    score += 500;
+                    waveEnemiesDefeated++;
+                    score += 500 + (waveNumber * 100);
+                    player.kills++;
+                    player.killstreak++;
                     scoreDisplay.textContent = 'Score: ' + score;
+                    document.getElementById('kills').textContent = `⚡ Killstreak: ${player.killstreak}`;
+                    
+                    // Random power-up drop
+                    if (Math.random() > 0.7) {
+                        powerUps.push({
+                            x: enemy.x,
+                            y: enemy.y,
+                            type: Math.random() > 0.5 ? 'health' : 'ammo',
+                            lifetime: 300
+                        });
+                    }
                 }
             }
         }
 
         function shoot() {
-            if (!gameActive || Date.now() - lastShot < 150 || player.ammo <= 0) return;
+            if (!gameActive || Date.now() - lastShot < 60000 / player.weapons[player.currentWeapon].rof || player.ammo <= 0) return;
             
+            const weapon = player.weapons[player.currentWeapon];
             player.ammo--;
             player.screenShake = 0.3;
-            ammoDisplay.textContent = 'Ammo: ' + player.ammo + ' | Press R to Reload';
-            if (player.ammo === 0) {
-                ammoDisplay.textContent = 'Ammo: OUT OF AMMO! | Press R to Reload';
-            }
+            updateAmmoDisplay();
             lastShot = Date.now();
-            player.recoil = 0.8;
-            player.accuracy = Math.random() * 0.15 - 0.075; // Spread
+            player.recoil = Math.min(1, player.recoil + 0.2);
+            
+            // Create particle effects
+            for (let p = 0; p < 3; p++) {
+                particles.push({
+                    x: GAME_WIDTH / 2 + (Math.random() - 0.5) * 50,
+                    y: GAME_HEIGHT / 2 + (Math.random() - 0.5) * 50,
+                    vx: (Math.random() - 0.5) * 5,
+                    vy: (Math.random() - 0.5) * 5 - 2,
+                    life: 30,
+                    color: weapon === player.weapons[1] ? '#FF6600' : '#00FF00'
+                });
+            }
 
-            // Create paintballs
-            const bulletsPerShot = 1;
             let hitEnemy = false;
-            for (let b = 0; b < bulletsPerShot; b++) {
-                const spread = player.accuracy + (Math.random() - 0.5) * 0.08;
+            for (let b = 0; b < 1; b++) {
+                const spread = player.accuracy * weapon.accuracy + (Math.random() - 0.5) * weapon.spread;
                 const shootAngle = player.angle + spread;
 
-                // Check for hits
                 for (let i = enemies.length - 1; i >= 0; i--) {
                     const dx = enemies[i].x - player.x;
                     const dy = enemies[i].y - player.y;
                     const angleToEnemy = Math.atan2(dy, dx);
                     const angleDiff = Math.abs(normalizeAngle(angleToEnemy - shootAngle));
 
-                    if (angleDiff < 0.12) {
+                    if (angleDiff < 0.15) {
                         const hitDist = Math.sqrt(dx * dx + dy * dy);
                         if (hitDist < MAX_DEPTH) {
-                            // Add paint splat to enemy
                             const paintColors = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF'];
                             const hitColor = paintColors[Math.floor(Math.random() * paintColors.length)];
+                            
                             enemies[i].paintHits.push({
                                 x: Math.random(),
                                 y: Math.random(),
                                 size: 3,
                                 color: hitColor
                             });
-                            enemies[i].health -= 25;
-                            enemies[i].color = hitColor;
                             
-                            // Add wall splat
-                            paintSplats.push({
-                                x: enemies[i].x,
-                                y: enemies[i].y,
-                                color: hitColor
-                            });
+                            enemies[i].health -= weapon.damage;
+                            enemies[i].color = hitColor;
+                            paintSplats.push({ x: enemies[i].x, y: enemies[i].y, color: hitColor });
 
-                            // Hit marker
                             const hitMarker = document.getElementById('hitMarker');
                             hitMarker.style.opacity = '1';
-                            setTimeout(() => {
-                                hitMarker.style.opacity = '0';
-                            }, 200);
+                            setTimeout(() => { hitMarker.style.opacity = '0'; }, 200);
 
                             player.lastHitTime = Date.now();
                             hitEnemy = true;
@@ -740,16 +933,48 @@
             }
         }
 
+        function reloadWeapon() {
+            if (!gameActive) return;
+            const weapon = player.weapons[player.currentWeapon];
+            player.ammo = weapon.ammo;
+            updateAmmoDisplay();
+        }
+
+        function updateAmmoDisplay() {
+            const weapon = player.weapons[player.currentWeapon];
+            ammoDisplay.textContent = `📦 Ammo: ${player.ammo}/${weapon.ammo} | R: Reload`;
+        }
+
+        function updateWeaponDisplay() {
+            const weapon = player.weapons[player.currentWeapon];
+            document.getElementById('weapon').textContent = `${weapon.icon} Weapon: ${weapon.name} [${weapon.damage} dmg, ${weapon.rof} RPM]`;
+        }
+
         function gameOver() {
             gameActive = false;
             gameOverScreen.style.display = 'block';
             finalScoreDisplay.textContent = 'Final Score: ' + score;
+            
+            // Log final stats
+            console.log('Game Over! Final Stats:', {
+                score: score,
+                wave: waveNumber,
+                kills: player.kills,
+                health: player.health
+            });
         }
 
         function update() {
             if (!gameActive) return;
             movePlayer();
             updateEnemies();
+            updatePowerUps();
+            updateParticles();
+            checkWaveComplete();
+            
+            if (!waveActive && enemies.length === 0) {
+                startWave();
+            }
         }
 
         function gameLoop() {
@@ -762,56 +987,81 @@
         function renderMinimap() {
             const minimapCanvas = document.getElementById('minimap');
             if (!minimapCanvas) return;
-            const minimapCtx = minimapCanvas.getContext('2d');
-            const mapScale = 15;
+            
+            try {
+                const minimapCtx = minimapCanvas.getContext('2d');
+                if (!minimapCtx) return;
+                
+                const mapScale = 15;
 
-            minimapCtx.fillStyle = '#000';
-            minimapCtx.fillRect(0, 0, 150, 150);
+                minimapCtx.fillStyle = '#000';
+                minimapCtx.fillRect(0, 0, 150, 150);
 
-            // Draw walls
-            minimapCtx.fillStyle = '#444';
-            for (let y = 0; y < levelMap.length; y++) {
-                for (let x = 0; x < levelMap[0].length; x++) {
-                    if (levelMap[y][x] === 1) {
-                        minimapCtx.fillRect(x * mapScale, y * mapScale, mapScale, mapScale);
+                // Draw walls
+                minimapCtx.fillStyle = '#444';
+                for (let y = 0; y < levelMap.length; y++) {
+                    for (let x = 0; x < levelMap[0].length; x++) {
+                        if (levelMap[y][x] === 1) {
+                            minimapCtx.fillRect(x * mapScale, y * mapScale, mapScale, mapScale);
+                        }
                     }
                 }
-            }
 
-            // Draw enemies
-            minimapCtx.fillStyle = '#FF0000';
-            enemies.forEach(enemy => {
+                // Draw enemies
+                minimapCtx.fillStyle = '#FF0000';
+                enemies.forEach(enemy => {
+                    minimapCtx.beginPath();
+                    minimapCtx.arc(enemy.x * mapScale, enemy.y * mapScale, 3, 0, Math.PI * 2);
+                    minimapCtx.fill();
+                });
+
+                // Draw player
+                minimapCtx.fillStyle = '#00FF00';
                 minimapCtx.beginPath();
-                minimapCtx.arc(enemy.x * mapScale, enemy.y * mapScale, 3, 0, Math.PI * 2);
+                minimapCtx.arc(player.x * mapScale, player.y * mapScale, 4, 0, Math.PI * 2);
                 minimapCtx.fill();
-            });
 
-            // Draw player
-            minimapCtx.fillStyle = '#00FF00';
-            minimapCtx.beginPath();
-            minimapCtx.arc(player.x * mapScale, player.y * mapScale, 4, 0, Math.PI * 2);
-            minimapCtx.fill();
+                // Draw player direction
+                minimapCtx.strokeStyle = '#00FF00';
+                minimapCtx.lineWidth = 2;
+                minimapCtx.beginPath();
+                minimapCtx.moveTo(player.x * mapScale, player.y * mapScale);
+                minimapCtx.lineTo(player.x * mapScale + Math.cos(player.angle) * 8, player.y * mapScale + Math.sin(player.angle) * 8);
+                minimapCtx.stroke();
 
-            // Draw player direction
-            minimapCtx.strokeStyle = '#00FF00';
-            minimapCtx.lineWidth = 2;
-            minimapCtx.beginPath();
-            minimapCtx.moveTo(player.x * mapScale, player.y * mapScale);
-            minimapCtx.lineTo(player.x * mapScale + Math.cos(player.angle) * 8, player.y * mapScale + Math.sin(player.angle) * 8);
-            minimapCtx.stroke();
-
-            // Border
-            minimapCtx.strokeStyle = '#00FF00';
-            minimapCtx.lineWidth = 1;
-            minimapCtx.strokeRect(0, 0, 150, 150);
+                // Border
+                minimapCtx.strokeStyle = '#00FF00';
+                minimapCtx.lineWidth = 1;
+                minimapCtx.strokeRect(0, 0, 150, 150);
+            } catch (e) {
+                console.error('Minimap render error:', e);
+            }
         }
 
-        // Spawn enemies periodically
-        setInterval(() => {
-            if (gameActive) spawnEnemy();
-        }, 3000);
+        // Spawn enemies periodically with wave scaling
+        let spawnInterval = setInterval(() => {
+            if (gameActive && waveActive && enemies.length < (5 + waveNumber) && waveEnemiesSpawned < (3 + waveNumber * 2)) {
+                spawnEnemy();
+                document.getElementById('wave').textContent = `🌊 Wave: ${waveNumber} | Enemies: ${waveEnemiesDefeated}/${3 + waveNumber * 2}`;
+            }
+        }, 1500 - Math.min(waveNumber * 100, 700));
 
-        gameLoop();
+        // Initial wave start
+        setTimeout(() => {
+            if (gameActive) startWave();
+        }, 1000);
+
+        // Start game loop
+        try {
+            console.log('Starting game loop...');
+            gameLoop();
+            console.log('Game loop initialized successfully');
+        } catch (e) {
+            console.error('Game loop error:', e);
+            console.trace();
+        }
     </script>
+</head>
+<body>
 </body>
 </html>
