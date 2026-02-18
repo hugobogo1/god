@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shooting Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: #222;
+            font-family: Arial, sans-serif;
+        }
+
+        #gameContainer {
+            position: relative;
+            width: 800px;
+            height: 600px;
+            background: linear-gradient(to bottom, #87CEEB, #E0F6FF);
+            border: 3px solid #333;
+            overflow: hidden;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+
+        #player {
+            position: absolute;
+            bottom: 10px;
+            left: 375px;
+            width: 50px;
+            height: 50px;
+            background: #00AA00;
+            border-radius: 5px;
+            border: 2px solid #00FF00;
+        }
+
+        .bullet {
+            position: absolute;
+            width: 5px;
+            height: 15px;
+            background: #FFFF00;
+            border-radius: 2px;
+        }
+
+        .enemy {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            background: #FF0000;
+            border-radius: 50%;
+            border: 2px solid #BB0000;
+        }
+
+        #score {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 24px;
+            color: #000;
+            font-weight: bold;
+            z-index: 100;
+        }
+
+        #health {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 24px;
+            color: #F00;
+            font-weight: bold;
+            z-index: 100;
+        }
+
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.9);
+            color: white;
+            padding: 40px;
+            border-radius: 10px;
+            text-align: center;
+            display: none;
+            z-index: 200;
+            min-width: 300px;
+        }
+
+        #gameOver h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            color: #FF6B6B;
+        }
+
+        #gameOver p {
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+
+        #gameOver button {
+            padding: 10px 30px;
+            font-size: 20px;
+            background: #00AA00;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        #gameOver button:hover {
+            background: #00FF00;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <div id="score">Score: 0</div>
+        <div id="health">Health: 3</div>
+        <div id="player"></div>
+        <div id="gameOver">
+            <h1>GAME OVER</h1>
+            <p id="finalScore">Final Score: 0</p>
+            <button onclick="location.reload()">Play Again</button>
+        </div>
+    </div>
+
+    <script>
+        const gameContainer = document.getElementById('gameContainer');
+        const player = document.getElementById('player');
+        const scoreDisplay = document.getElementById('score');
+        const healthDisplay = document.getElementById('health');
+        const gameOverScreen = document.getElementById('gameOver');
+        const finalScoreDisplay = document.getElementById('finalScore');
+
+        const CONTAINER_WIDTH = 800;
+        const CONTAINER_HEIGHT = 600;
+        const PLAYER_WIDTH = 50;
+        const PLAYER_HEIGHT = 50;
+        const PLAYER_SPEED = 5;
+        const BULLET_SPEED = 8;
+        const ENEMY_SPEED = 2;
+
+        let playerX = (CONTAINER_WIDTH - PLAYER_WIDTH) / 2;
+        let playerY = CONTAINER_HEIGHT - PLAYER_HEIGHT - 10;
+        let score = 0;
+        let health = 3;
+        let gameActive = true;
+
+        let bullets = [];
+        let enemies = [];
+
+        const keys = {};
+
+        // Controls
+        window.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            if (e.key === ' ') {
+                e.preventDefault();
+                shoot();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+        });
+
+        // Mouse controls
+        gameContainer.addEventListener('mousemove', (e) => {
+            if (!gameActive) return;
+            const rect = gameContainer.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            if (mouseX > 0 && mouseX < CONTAINER_WIDTH) {
+                playerX = Math.max(0, Math.min(mouseX - PLAYER_WIDTH / 2, CONTAINER_WIDTH - PLAYER_WIDTH));
+            }
+        });
+
+        gameContainer.addEventListener('click', () => {
+            if (gameActive) shoot();
+        });
+
+        function shoot() {
+            if (!gameActive) return;
+            const bullet = {
+                x: playerX + PLAYER_WIDTH / 2 - 2.5,
+                y: playerY,
+                width: 5,
+                height: 15
+            };
+            bullets.push(bullet);
+        }
+
+        function spawnEnemy() {
+            if (!gameActive) return;
+            const enemy = {
+                x: Math.random() * (CONTAINER_WIDTH - 40),
+                y: -40,
+                width: 40,
+                height: 40,
+                speed: ENEMY_SPEED + Math.random() * 2
+            };
+            enemies.push(enemy);
+        }
+
+        function updatePlayerPosition() {
+            if (keys['ArrowLeft'] || keys['a']) {
+                playerX = Math.max(0, playerX - PLAYER_SPEED);
+            }
+            if (keys['ArrowRight'] || keys['d']) {
+                playerX = Math.min(CONTAINER_WIDTH - PLAYER_WIDTH, playerX + PLAYER_SPEED);
+            }
+            player.style.left = playerX + 'px';
+        }
+
+        function updateBullets() {
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                bullets[i].y -= BULLET_SPEED;
+                if (bullets[i].y < 0) {
+                    bullets.splice(i, 1);
+                } else {
+                    const bulletEl = document.querySelector(`[data-bullet-id="${i}"]`);
+                    if (bulletEl) bulletEl.style.top = bullets[i].y + 'px';
+                }
+            }
+        }
+
+        function updateEnemies() {
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                enemies[i].y += enemies[i].speed;
+                if (enemies[i].y > CONTAINER_HEIGHT) {
+                    enemies.splice(i, 1);
+                    health--;
+                    healthDisplay.textContent = 'Health: ' + health;
+                    if (health <= 0) gameOver();
+                } else {
+                    const enemyEl = document.querySelector(`[data-enemy-id="${i}"]`);
+                    if (enemyEl) enemyEl.style.top = enemies[i].y + 'px';
+                }
+            }
+        }
+
+        function checkCollisions() {
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                for (let j = enemies.length - 1; j >= 0; j--) {
+                    if (
+                        bullets[i].x < enemies[j].x + enemies[j].width &&
+                        bullets[i].x + bullets[i].width > enemies[j].x &&
+                        bullets[i].y < enemies[j].y + enemies[j].height &&
+                        bullets[i].y + bullets[i].height > enemies[j].y
+                    ) {
+                        const bulletEl = document.querySelector(`[data-bullet-id="${i}"]`);
+                        const enemyEl = document.querySelector(`[data-enemy-id="${j}"]`);
+                        if (bulletEl) bulletEl.remove();
+                        if (enemyEl) enemyEl.remove();
+                        bullets.splice(i, 1);
+                        enemies.splice(j, 1);
+                        score += 10;
+                        scoreDisplay.textContent = 'Score: ' + score;
+                        break;
+                    }
+                }
+            }
+        }
+
+        function renderBullets() {
+            bullets.forEach((bullet, index) => {
+                if (!document.querySelector(`[data-bullet-id="${index}"]`)) {
+                    const bulletEl = document.createElement('div');
+                    bulletEl.className = 'bullet';
+                    bulletEl.setAttribute('data-bullet-id', index);
+                    bulletEl.style.left = bullet.x + 'px';
+                    bulletEl.style.top = bullet.y + 'px';
+                    gameContainer.appendChild(bulletEl);
+                }
+            });
+        }
+
+        function renderEnemies() {
+            enemies.forEach((enemy, index) => {
+                if (!document.querySelector(`[data-enemy-id="${index}"]`)) {
+                    const enemyEl = document.createElement('div');
+                    enemyEl.className = 'enemy';
+                    enemyEl.setAttribute('data-enemy-id', index);
+                    enemyEl.style.left = enemy.x + 'px';
+                    enemyEl.style.top = enemy.y + 'px';
+                    gameContainer.appendChild(enemyEl);
+                }
+            });
+        }
+
+        function gameOver() {
+            gameActive = false;
+            gameOverScreen.style.display = 'block';
+            finalScoreDisplay.textContent = 'Final Score: ' + score;
+        }
+
+        function update() {
+            if (!gameActive) return;
+            updatePlayerPosition();
+            updateBullets();
+            updateEnemies();
+            checkCollisions();
+            renderBullets();
+        }
+
+        // Spawn enemies periodically
+        setInterval(() => {
+            if (gameActive) spawnEnemy();
+        }, 800 - Math.min(score / 50, 400));
+
+        // Game loop
+        setInterval(update, 1000 / 60);
+
+        // Initial render
+        player.style.left = playerX + 'px';
+        player.style.top = playerY + 'px';
+    </script>
+</body>
+</html>
