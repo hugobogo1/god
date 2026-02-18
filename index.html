@@ -206,14 +206,22 @@
             y: 5.5,
             angle: 0,
             health: 100,
-            speed: 0.1
+            speed: 0.06,
+            ammo: 300,
+            maxAmmo: 300,
+            ammunition: [],
+            recoil: 0,
+            accuracy: 0,
+            velocity: { x: 0, y: 0 }
         };
 
         let gameActive = true;
         let score = 0;
         let enemies = [];
+        let paintSplats = [];
         let lastShot = 0;
         let mouseX = GAME_WIDTH / 2;
+        let ammoDisplay = document.getElementById('ammo');
 
         // Level map (0 = floor, 1 = wall, 2 = goal)
         const levelMap = [
@@ -266,31 +274,48 @@
         function movePlayer() {
             if (!gameActive) return;
 
-            let newX = player.x;
-            let newY = player.y;
+            // Apply friction
+            player.velocity.x *= 0.85;
+            player.velocity.y *= 0.85;
+
+            let accelX = 0;
+            let accelY = 0;
 
             if (keys['w']) {
-                newX += Math.cos(player.angle) * player.speed;
-                newY += Math.sin(player.angle) * player.speed;
+                accelX += Math.cos(player.angle) * 0.008;
+                accelY += Math.sin(player.angle) * 0.008;
             }
             if (keys['s']) {
-                newX -= Math.cos(player.angle) * player.speed;
-                newY -= Math.sin(player.angle) * player.speed;
+                accelX -= Math.cos(player.angle) * 0.008;
+                accelY -= Math.sin(player.angle) * 0.008;
             }
             if (keys['a']) {
-                newX += Math.cos(player.angle - Math.PI / 2) * player.speed;
-                newY += Math.sin(player.angle - Math.PI / 2) * player.speed;
+                accelX += Math.cos(player.angle - Math.PI / 2) * 0.008;
+                accelY += Math.sin(player.angle - Math.PI / 2) * 0.008;
             }
             if (keys['d']) {
-                newX += Math.cos(player.angle + Math.PI / 2) * player.speed;
-                newY += Math.sin(player.angle + Math.PI / 2) * player.speed;
+                accelX += Math.cos(player.angle + Math.PI / 2) * 0.008;
+                accelY += Math.sin(player.angle + Math.PI / 2) * 0.008;
             }
 
-            // Collision detection
+            player.velocity.x += accelX;
+            player.velocity.y += accelY;
+
+            let newX = player.x + player.velocity.x;
+            let newY = player.y + player.velocity.y;
+
+            // Collision detection with friction
             if (!isWall(newX, newY)) {
                 player.x = newX;
                 player.y = newY;
+            } else {
+                player.velocity.x = 0;
+                player.velocity.y = 0;
             }
+
+            // Reduce recoil
+            player.recoil *= 0.92;
+            player.accuracy *= 0.95;
         }
 
         function castRay(angle) {
@@ -331,16 +356,27 @@
 
                 // Calculate wall height
                 const wallHeight = Math.min(WALL_HEIGHT / (correctedDistance + 0.1), GAME_HEIGHT);
-                const wallColor = Math.floor(200 - (distance / MAX_DEPTH) * 150);
-                const color = `rgb(${wallColor}, ${wallColor}, ${wallColor})`;
+                const wallColor = Math.floor(150 - (distance / MAX_DEPTH) * 100);
+                const color = `rgb(${wallColor}, ${wallColor * 0.8}, ${wallColor * 0.7})`;
 
                 ctx.fillStyle = color;
                 const wallTop = (GAME_HEIGHT - wallHeight) / 2;
                 ctx.fillRect(i, wallTop, 1, wallHeight);
 
                 // Ceiling
-                ctx.fillStyle = '#1a1a2e';
+                ctx.fillStyle = '#0f0f1a';
                 ctx.fillRect(i, 0, 1, wallTop);
+
+                // Paint splats on walls
+                paintSplats.forEach(splat => {
+                    const splatDist = castRayToPoint(rayAngle, splat.x, splat.y);
+                    if (Math.abs(distance - splatDist) < 0.1) {
+                        ctx.fillStyle = splat.color;
+                        ctx.globalAlpha = 0.7;
+                        ctx.fillRect(i, wallTop + wallHeight * 0.4, 1, wallHeight * 0.2);
+                        ctx.globalAlpha = 1;
+                    }
+                });
             }
 
             // Render enemies
@@ -355,17 +391,47 @@
                     const screenX = GAME_WIDTH / 2 + (angleDiff / (FOV / 2)) * (GAME_WIDTH / 2);
                     const enemyHeight = Math.min(WALL_HEIGHT / (enemyDist + 0.1), GAME_HEIGHT);
                     const enemyTop = (GAME_HEIGHT - enemyHeight) / 2;
-                    const enemyWidth = enemyHeight * 0.7;
+                    const enemyWidth = enemyHeight * 0.6;
 
-                    ctx.fillStyle = 'rgba(255, 0, 0, 0.8)';
+                    // Enemy body with paint hits
+                    ctx.fillStyle = enemy.color || '#FF6600';
                     ctx.fillRect(screenX - enemyWidth / 2, enemyTop, enemyWidth, enemyHeight);
 
-                    // Draw enemy glow
-                    ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
-                    ctx.lineWidth = 2;
-                    ctx.strokeRect(screenX - enemyWidth / 2 - 2, enemyTop - 2, enemyWidth + 4, enemyHeight + 4);
+                    // Paint splatters on enemy
+                    enemy.paintHits.forEach(hit => {
+                        ctx.fillStyle = hit.color;
+                        ctx.globalAlpha = 0.8;
+                        ctx.beginPath();
+                        ctx.arc(screenX - enemyWidth / 2 + hit.x * enemyWidth, 
+                               enemyTop + hit.y * enemyHeight, 
+                               hit.size, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.globalAlpha = 1;
+                    });
+
+                    // Health bar
+                    ctx.fillStyle = '#00FF00';
+                    ctx.fillRect(screenX - enemyWidth / 2, enemyTop - 15, (enemyWidth * enemy.health) / 100, 5);
+                    ctx.strokeStyle = '#00AA00';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(screenX - enemyWidth / 2, enemyTop - 15, enemyWidth, 5);
                 }
             });
+
+            // Draw gun recoil effect
+            if (player.recoil > 0) {
+                ctx.strokeStyle = `rgba(255, 150, 0, ${player.recoil})`;
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(GAME_WIDTH / 2, GAME_HEIGHT / 2, 40, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+        }
+
+        function castRayToPoint(angle, x, y) {
+            const dx = x - player.x;
+            const dy = y - player.y;
+            return Math.sqrt(dx * dx + dy * dy);
         }
 
         function normalizeAngle(angle) {
@@ -375,7 +441,7 @@
         }
 
         function spawnEnemy() {
-            if (!gameActive || enemies.length > 8) return;
+            if (!gameActive || enemies.length > 6) return;
 
             let x, y;
             let valid = false;
@@ -385,12 +451,17 @@
                 valid = !isWall(x, y) && Math.sqrt((x - player.x) ** 2 + (y - player.y) ** 2) > 3;
             }
 
+            const paintColors = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF'];
+            const enemyColor = paintColors[Math.floor(Math.random() * paintColors.length)];
+
             enemies.push({
                 x: x,
                 y: y,
-                health: 30,
+                health: 100,
                 speed: 0.02,
-                shootTimer: 0
+                shootTimer: 0,
+                color: enemyColor,
+                paintHits: []
             });
         }
 
@@ -401,39 +472,73 @@
                 const dy = player.y - enemy.y;
                 const dist = Math.sqrt(dx * dx + dy * dy);
 
+                // Move toward player at paintball speed (slower, tactical)
                 if (dist > 0.5) {
-                    enemy.x += (dx / dist) * enemy.speed;
-                    enemy.y += (dy / dist) * enemy.speed;
+                    enemy.x += (dx / dist) * enemy.speed * 0.7;
+                    enemy.y += (dy / dist) * enemy.speed * 0.7;
                 }
 
                 // Check if enemy hit player
                 if (dist < 0.5) {
-                    player.health -= 2;
+                    player.health -= 1;
                     healthDisplay.textContent = 'Health: ' + Math.max(0, Math.floor(player.health));
                     if (player.health <= 0) gameOver();
                 }
 
                 if (enemy.health <= 0) {
                     enemies.splice(i, 1);
-                    score += 100;
+                    score += 500;
                     scoreDisplay.textContent = 'Score: ' + score;
                 }
             }
         }
 
         function shoot() {
-            if (!gameActive || Date.now() - lastShot < 200) return;
+            if (!gameActive || Date.now() - lastShot < 150 || player.ammo <= 0) return;
+            
+            player.ammo--;
+            ammoDisplay.textContent = 'Ammo: ' + player.ammo;
             lastShot = Date.now();
+            player.recoil = 0.8;
+            player.accuracy = Math.random() * 0.15 - 0.075; // Spread
 
-            for (let i = enemies.length - 1; i >= 0; i--) {
-                const dx = enemies[i].x - player.x;
-                const dy = enemies[i].y - player.y;
-                const angleToEnemy = Math.atan2(dy, dx);
-                const angleDiff = Math.abs(normalizeAngle(angleToEnemy - player.angle));
+            // Create paintballs
+            const bulletsPerShot = 1;
+            for (let b = 0; b < bulletsPerShot; b++) {
+                const spread = player.accuracy + (Math.random() - 0.5) * 0.08;
+                const shootAngle = player.angle + spread;
 
-                if (angleDiff < 0.1) {
-                    enemies[i].health -= 50;
-                    break;
+                // Check for hits
+                for (let i = enemies.length - 1; i >= 0; i--) {
+                    const dx = enemies[i].x - player.x;
+                    const dy = enemies[i].y - player.y;
+                    const angleToEnemy = Math.atan2(dy, dx);
+                    const angleDiff = Math.abs(normalizeAngle(angleToEnemy - shootAngle));
+
+                    if (angleDiff < 0.12) {
+                        const hitDist = Math.sqrt(dx * dx + dy * dy);
+                        if (hitDist < MAX_DEPTH) {
+                            // Add paint splat to enemy
+                            const paintColors = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF'];
+                            const hitColor = paintColors[Math.floor(Math.random() * paintColors.length)];
+                            enemies[i].paintHits.push({
+                                x: Math.random(),
+                                y: Math.random(),
+                                size: 3,
+                                color: hitColor
+                            });
+                            enemies[i].health -= 25;
+                            enemies[i].color = hitColor;
+                            
+                            // Add wall splat
+                            paintSplats.push({
+                                x: enemies[i].x,
+                                y: enemies[i].y,
+                                color: hitColor
+                            });
+                            break;
+                        }
+                    }
                 }
             }
         }
@@ -459,7 +564,7 @@
         // Spawn enemies periodically
         setInterval(() => {
             if (gameActive) spawnEnemy();
-        }, 2000);
+        }, 3000);
 
         gameLoop();
     </script>
